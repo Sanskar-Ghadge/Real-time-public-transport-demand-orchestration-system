@@ -1,0 +1,13 @@
+/* Baseline css overrides to prevent Vite's default templates from breaking full-screen widths */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+body {
+  background-color: #05070f;
+  color: #f3f4f6;
+}

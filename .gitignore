@@ -1,0 +1,25 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Large Datasets (Exceeding GitHub 100MB upload limits)
+data/raw/
+data/processed/hourly_zone_demand.csv
+data/processed/combined_dataset.csv
+data/processed/combined_dataset_small.csv
+
+# Node / React
+node_modules/
+frontend/node_modules/
+dist/
+build/
+
+# Operating System & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
