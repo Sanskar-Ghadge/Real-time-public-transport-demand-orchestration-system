@@ -1,4 +1,4 @@
-# 🛸 Coruscant Transit Command — Real-Time Transport Demand Orchestration System
+# 🚍 Chicago Transit Command — Real-Time Transport Demand Orchestration System
 
 An AI-powered real-time public transport demand prediction and fleet orchestration platform. The system leverages machine learning models to forecast passenger crowds, detect unexpected demand surges, simulate event ridership multipliers, and dynamically generate automated fleet rebalancing recommendations.
 

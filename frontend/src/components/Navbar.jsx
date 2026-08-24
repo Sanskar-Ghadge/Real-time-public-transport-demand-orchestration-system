@@ -5,11 +5,11 @@ function Navbar() {
     return (
         <nav className="custom-nav">
             <NavLink to="/" className="nav-brand">
-                🛸 Coruscant Transit Command
+                🚍 Smart Bus Transit
             </NavLink>
             <div className="nav-links">
                 <NavLink to="/" end className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-                    🏠 Home
+                    🏠 Overview
                 </NavLink>
                 <NavLink to="/map" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
                     🗺️ Live Map
@@ -25,7 +25,7 @@ function Navbar() {
                 </NavLink>
             </div>
             <div className="nav-status">
-                <span className="status-dot"></span> System Online
+                <span className="status-dot"></span> System Online (Demo Mode)
             </div>
         </nav>
     );

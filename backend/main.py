@@ -12,7 +12,7 @@ import os
 
 # ── Create FastAPI App ─────────────────────────────────────────────
 app = FastAPI(
-    title="Coruscant Transit Command API",
+    title="Chicago Transit Command API",
     description="Real-Time Transport Demand and Fleet Orchestration",
     version="1.0.0"
 )
@@ -70,7 +70,7 @@ app.include_router(buses.router,   prefix="/api/buses",   tags=["Buses"])
 @app.get("/")
 async def root():
     return {
-        "message": "Coruscant Transit Command API is running",
+        "message": "Chicago Transit Command API is running",
         "status":  "online",
         "version": "1.0.0"
     }
