@@ -40,25 +40,14 @@ async def startup_event():
 
     # Load scalers
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    df = pd.read_csv(os.path.join(BASE_DIR, 
-                     '../data/processed/combined_dataset_small.csv'))
+    SCALER_PATH = os.path.join(BASE_DIR, '../models/saved/demand_scalers.pkl')
 
-    features = ['hour', 'is_weekend', 'temp_max', 'temp_min',
-                'precipitation', 'is_raining', 'weather_code',
-                'day_of_week', 'month']
+    with open(SCALER_PATH, 'rb') as f:
+        scalers = pickle.load(f)
+        demand_scaler_X = scalers['scaler_X']
+        demand_scaler_y = scalers['scaler_y']
 
-    df['day_of_week'] = pd.to_datetime(df['date']).dt.dayofweek
-    df['month']       = pd.to_datetime(df['date']).dt.month
-    df['demand_normalized'] = df.groupby('zone_id')['demand'].transform(
-        lambda x: (x - x.mean()) / (x.std() + 1e-8)
-    )
-
-    demand_scaler_X = MinMaxScaler()
-    demand_scaler_y = MinMaxScaler()
-    demand_scaler_X.fit(df[features])
-    demand_scaler_y.fit(df['demand_normalized'].values.reshape(-1, 1))
-
-    print("All models loaded successfully")
+    print("All models and scalers loaded successfully")
 
 # ── Register Routes ────────────────────────────────────────────────
 app.include_router(demand.router,  prefix="/api/demand",  tags=["Demand"])
