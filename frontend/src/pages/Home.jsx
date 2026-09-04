@@ -1,9 +1,44 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
+import { motion, useReducedMotion } from 'framer-motion';
 import { getCityStatus } from '../services/api';
 
-// ── 3D WebGL Hero Canvas ─────────────────────────────────────────────
+// ── Digital Odometer Roll-Up Counter Component ───────────────────────
+function OdometerNumber({ targetValue, suffix = '', duration = 1200 }) {
+    const [displayVal, setDisplayVal] = useState(0);
+
+    useEffect(() => {
+        const numericVal = typeof targetValue === 'number'
+            ? targetValue
+            : parseFloat(String(targetValue).replace(/[^0-9.]/g, '')) || 0;
+
+        let startTimestamp = null;
+        let startVal = displayVal;
+
+        const step = (timestamp) => {
+            if (!startTimestamp) startTimestamp = timestamp;
+            const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+            const easeProgress = 1 - Math.pow(1 - progress, 3);
+            const current = Math.floor(startVal + (numericVal - startVal) * easeProgress);
+            setDisplayVal(current);
+
+            if (progress < 1) {
+                requestAnimationFrame(step);
+            }
+        };
+
+        requestAnimationFrame(step);
+    }, [targetValue, duration]);
+
+    return (
+        <span style={{ fontFamily: 'var(--font-mono, monospace)', fontWeight: 'bold' }}>
+            {displayVal}{suffix}
+        </span>
+    );
+}
+
+// ── 3D WebGL Hero Canvas — Particle Transit System & Camera Panning ─
 function Transit3DCanvas({ mode }) {
     const mountRef = useRef(null);
 
@@ -16,22 +51,22 @@ function Transit3DCanvas({ mode }) {
 
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-        camera.position.set(0, 0, 18);
+        camera.position.set(0, 0, 20);
 
-        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "high-performance" });
         renderer.setSize(width, height);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
         currentMount.appendChild(renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.4);
         scene.add(ambientLight);
 
-        const pointLight1 = new THREE.PointLight(0x0ea5e9, 3, 50);
-        pointLight1.position.set(10, 10, 10);
+        const pointLight1 = new THREE.PointLight(0x06b6d4, 4, 60);
+        pointLight1.position.set(12, 12, 12);
         scene.add(pointLight1);
 
-        const pointLight2 = new THREE.PointLight(0x10b981, 2, 50);
-        pointLight2.position.set(-10, -10, 10);
+        const pointLight2 = new THREE.PointLight(0x10b981, 3, 60);
+        pointLight2.position.set(-12, -12, 12);
         scene.add(pointLight2);
 
         const mainGroup = new THREE.Group();
@@ -40,92 +75,123 @@ function Transit3DCanvas({ mode }) {
         let animateItems = [];
 
         if (mode === 'globe') {
-            const sphereGeo = new THREE.IcosahedronGeometry(4.8, 3);
-            const sphereMat = new THREE.MeshBasicMaterial({
-                color: 0x0ea5e9,
-                wireframe: true,
-                transparent: true,
-                opacity: 0.25
-            });
-            const wireSphere = new THREE.Mesh(sphereGeo, sphereMat);
-            mainGroup.add(wireSphere);
-
-            const innerGeo = new THREE.SphereGeometry(3.6, 32, 32);
-            const innerMat = new THREE.MeshBasicMaterial({
-                color: 0x0284c7,
-                transparent: true,
-                opacity: 0.15
-            });
-            const innerSphere = new THREE.Mesh(innerGeo, innerMat);
-            mainGroup.add(innerSphere);
-
-            const ringColors = [0x0ea5e9, 0x10b981, 0xf59e0b];
-            const rings = [];
-            const buses = [];
-
-            for (let i = 0; i < 3; i++) {
-                const ringGeo = new THREE.TorusGeometry(5.8 + i * 0.9, 0.03, 16, 100);
-                const ringMat = new THREE.MeshBasicMaterial({
-                    color: ringColors[i],
-                    transparent: true,
-                    opacity: 0.45
-                });
-                const ring = new THREE.Mesh(ringGeo, ringMat);
-                ring.rotation.x = Math.PI / 3 + i * 0.4;
-                ring.rotation.y = i * 0.5;
-                mainGroup.add(ring);
-                rings.push(ring);
-
-                const busGeo = new THREE.SphereGeometry(0.25, 16, 16);
-                const busMat = new THREE.MeshStandardMaterial({
-                    color: ringColors[i],
-                    emissive: ringColors[i],
-                    emissiveIntensity: 0.9
-                });
-                const busMesh = new THREE.Mesh(busGeo, busMat);
-                mainGroup.add(busMesh);
-                buses.push({ mesh: busMesh, radius: 5.8 + i * 0.9, ring, speed: 0.015 + i * 0.005, angle: Math.random() * Math.PI * 2 });
-            }
-
-            const particleCount = 700;
+            const nodeCount = 800;
             const particleGeo = new THREE.BufferGeometry();
-            const particlePos = new Float32Array(particleCount * 3);
+            const particlePos = new Float32Array(nodeCount * 3);
+            const particleColors = new Float32Array(nodeCount * 3);
 
-            for (let i = 0; i < particleCount * 3; i += 3) {
+            const palette = [
+                new THREE.Color(0x06b6d4),
+                new THREE.Color(0x10b981),
+                new THREE.Color(0xf59e0b),
+                new THREE.Color(0xec4899),
+                new THREE.Color(0x38bdf8)
+            ];
+
+            for (let i = 0; i < nodeCount * 3; i += 3) {
                 const u = Math.random();
                 const v = Math.random();
                 const theta = u * 2.0 * Math.PI;
                 const phi = Math.acos(2.0 * v - 1.0);
-                const r = 4.8 + (Math.random() - 0.5) * 1.6;
+                const r = 5.2 + (Math.random() - 0.5) * 1.8;
 
-                particlePos[i] = r * Math.sin(phi) * Math.cos(theta);
+                particlePos[i]     = r * Math.sin(phi) * Math.cos(theta);
                 particlePos[i + 1] = r * Math.sin(phi) * Math.sin(theta);
                 particlePos[i + 2] = r * Math.cos(phi);
+
+                const color = palette[Math.floor(Math.random() * palette.length)];
+                particleColors[i]     = color.r;
+                particleColors[i + 1] = color.g;
+                particleColors[i + 2] = color.b;
             }
 
             particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePos, 3));
+            particleGeo.setAttribute('color', new THREE.BufferAttribute(particleColors, 3));
+
             const particleMat = new THREE.PointsMaterial({
-                color: 0x38bdf8,
-                size: 0.09,
+                size: 0.14,
+                vertexColors: true,
                 transparent: true,
-                opacity: 0.75
+                opacity: 0.85,
+                blending: THREE.AdditiveBlending
             });
-            const particleSystem = new THREE.Points(particleGeo, particleMat);
-            mainGroup.add(particleSystem);
+
+            const transitParticleSystem = new THREE.Points(particleGeo, particleMat);
+            mainGroup.add(transitParticleSystem);
+
+            const innerGlobeGeo = new THREE.IcosahedronGeometry(4.8, 2);
+            const innerGlobeMat = new THREE.MeshBasicMaterial({
+                color: 0x0284c7,
+                wireframe: true,
+                transparent: true,
+                opacity: 0.15
+            });
+            const innerGlobe = new THREE.Mesh(innerGlobeGeo, innerGlobeMat);
+            mainGroup.add(innerGlobe);
+
+            const telemetryBusNodes = [];
+            const nodeGeo = new THREE.SphereGeometry(0.22, 12, 12);
+
+            for (let i = 0; i < 6; i++) {
+                const nodeMat = new THREE.MeshStandardMaterial({
+                    color: palette[i % palette.length],
+                    emissive: palette[i % palette.length],
+                    emissiveIntensity: 1.2,
+                    roughness: 0.2
+                });
+                const nodeMesh = new THREE.Mesh(nodeGeo, nodeMat);
+
+                const phi = Math.random() * Math.PI;
+                const theta = Math.random() * Math.PI * 2;
+                const r = 5.4;
+
+                nodeMesh.position.set(
+                    r * Math.sin(phi) * Math.cos(theta),
+                    r * Math.sin(phi) * Math.sin(theta),
+                    r * Math.cos(phi)
+                );
+
+                mainGroup.add(nodeMesh);
+
+                telemetryBusNodes.push({
+                    mesh: nodeMesh,
+                    phase: Math.random() * Math.PI * 2,
+                    speed: 0.04 + Math.random() * 0.03
+                });
+            }
+
+            const ringColors = [0x06b6d4, 0x10b981, 0xf59e0b];
+            const rings = [];
+
+            for (let i = 0; i < 3; i++) {
+                const ringGeo = new THREE.TorusGeometry(6.2 + i * 1.1, 0.025, 12, 80);
+                const ringMat = new THREE.MeshBasicMaterial({
+                    color: ringColors[i],
+                    transparent: true,
+                    opacity: 0.4
+                });
+                const ring = new THREE.Mesh(ringGeo, ringMat);
+                ring.rotation.x = Math.PI / 3 + i * 0.45;
+                ring.rotation.y = i * 0.6;
+                mainGroup.add(ring);
+                rings.push(ring);
+            }
 
             animateItems = [
                 () => {
-                    wireSphere.rotation.y += 0.003;
-                    wireSphere.rotation.x += 0.001;
-                    particleSystem.rotation.y += 0.002;
+                    transitParticleSystem.rotation.y += 0.002;
+                    transitParticleSystem.rotation.x += 0.0008;
+                    innerGlobe.rotation.y += 0.0015;
 
-                    buses.forEach(b => {
-                        b.angle += b.speed;
-                        const x = Math.cos(b.angle) * b.radius;
-                        const y = Math.sin(b.angle) * b.radius;
-                        const vec = new THREE.Vector3(x, y, 0);
-                        vec.applyEuler(b.ring.rotation);
-                        b.mesh.position.copy(vec);
+                    telemetryBusNodes.forEach((node) => {
+                        node.phase += node.speed;
+                        const pulseScale = 1 + Math.sin(node.phase) * 0.45;
+                        node.mesh.scale.setScalar(pulseScale);
+                        node.mesh.material.emissiveIntensity = 0.8 + Math.sin(node.phase) * 0.6;
+                    });
+
+                    rings.forEach((r, idx) => {
+                        r.rotation.z += 0.003 * (idx + 1);
                     });
                 }
             ];
@@ -133,16 +199,16 @@ function Transit3DCanvas({ mode }) {
             mainGroup.rotation.x = Math.PI / 6;
             mainGroup.rotation.y = -Math.PI / 5;
 
-            const gridHelper = new THREE.GridHelper(16, 12, 0x0ea5e9, 0x1e293b);
+            const gridHelper = new THREE.GridHelper(18, 14, 0x06b6d4, 0x1e293b);
             gridHelper.position.y = -2;
             mainGroup.add(gridHelper);
 
             const towers = [];
-            const colors = [0x10b981, 0xf59e0b, 0xef4444, 0x0ea5e9];
+            const colors = [0x10b981, 0xf59e0b, 0xef4444, 0x06b6d4, 0x8b5cf6];
 
-            for (let x = -5; x <= 5; x += 2.5) {
-                for (let z = -5; z <= 5; z += 2.5) {
-                    const height = Math.random() * 4 + 1;
+            for (let x = -6; x <= 6; x += 2.5) {
+                for (let z = -6; z <= 6; z += 2.5) {
+                    const height = Math.random() * 4.5 + 1;
                     const towerGeo = new THREE.BoxGeometry(1.2, height, 1.2);
                     const color = colors[Math.floor(Math.random() * colors.length)];
                     const towerMat = new THREE.MeshStandardMaterial({
@@ -158,7 +224,6 @@ function Transit3DCanvas({ mode }) {
 
                     towers.push({
                         mesh: tower,
-                        baseHeight: height,
                         phase: Math.random() * Math.PI * 2,
                         speed: 0.03 + Math.random() * 0.02
                     });
@@ -177,27 +242,48 @@ function Transit3DCanvas({ mode }) {
             ];
         }
 
-        let mouseX = 0;
-        let mouseY = 0;
+        let targetMouseX = 0;
+        let targetMouseY = 0;
+        let currentMouseX = 0;
+        let currentMouseY = 0;
+
         const handleMouseMove = (e) => {
             const rect = currentMount.getBoundingClientRect();
-            mouseX = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
-            mouseY = -((e.clientY - rect.top) / rect.height - 0.5) * 2;
+            targetMouseX = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
+            targetMouseY = -((e.clientY - rect.top) / rect.height - 0.5) * 2;
         };
 
-        window.addEventListener('mousemove', handleMouseMove);
+        currentMount.addEventListener('mousemove', handleMouseMove);
 
-        let animationFrameId;
+        let animationFrameId = null;
+        let isVisible = true;
+
         const animate = () => {
+            if (!isVisible) return;
             animationFrameId = requestAnimationFrame(animate);
 
-            camera.position.x += (mouseX * 2.5 - camera.position.x) * 0.05;
-            camera.position.y += (mouseY * 2.5 - camera.position.y) * 0.05;
+            currentMouseX += (targetMouseX - currentMouseX) * 0.05;
+            currentMouseY += (targetMouseY - currentMouseY) * 0.05;
+
+            camera.position.x = currentMouseX * 3.5;
+            camera.position.y = currentMouseY * 3.5;
             camera.lookAt(scene.position);
 
             animateItems.forEach(fn => fn());
             renderer.render(scene, camera);
         };
+
+        const observer = new IntersectionObserver(([entry]) => {
+            isVisible = entry.isIntersecting;
+            if (isVisible) {
+                if (!animationFrameId) animate();
+            } else if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+        }, { threshold: 0.05 });
+
+        observer.observe(currentMount);
         animate();
 
         const handleResize = () => {
@@ -211,9 +297,10 @@ function Transit3DCanvas({ mode }) {
         window.addEventListener('resize', handleResize);
 
         return () => {
-            window.removeEventListener('mousemove', handleMouseMove);
+            observer.disconnect();
+            currentMount.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('resize', handleResize);
-            cancelAnimationFrame(animationFrameId);
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
             if (currentMount.contains(renderer.domElement)) {
                 currentMount.removeChild(renderer.domElement);
             }
@@ -227,7 +314,7 @@ function Transit3DCanvas({ mode }) {
             style={{
                 width: '100%',
                 height: '100%',
-                minHeight: '360px',
+                minHeight: '380px',
                 position: 'relative',
                 overflow: 'hidden',
                 borderRadius: '16px'
@@ -251,15 +338,15 @@ function Feature3DPreview({ type }) {
         const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
         camera.position.set(0, 0, 7);
 
-        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "high-performance" });
         renderer.setSize(width, height);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
         currentMount.appendChild(renderer.domElement);
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
         scene.add(ambientLight);
 
-        const pointLight = new THREE.PointLight(0x0ea5e9, 2, 20);
+        const pointLight = new THREE.PointLight(0x06b6d4, 2, 20);
         pointLight.position.set(5, 5, 5);
         scene.add(pointLight);
 
@@ -269,13 +356,13 @@ function Feature3DPreview({ type }) {
         let animateFunc = () => {};
 
         if (type === 'map') {
-            const grid = new THREE.GridHelper(6, 8, 0x0ea5e9, 0x1e293b);
+            const grid = new THREE.GridHelper(6, 8, 0x06b6d4, 0x1e293b);
             grid.rotation.x = Math.PI / 4;
             group.add(grid);
 
             const busMat1 = new THREE.MeshBasicMaterial({ color: 0x10b981 });
             const busMat2 = new THREE.MeshBasicMaterial({ color: 0xef4444 });
-            const busMat3 = new THREE.MeshBasicMaterial({ color: 0x0ea5e9 });
+            const busMat3 = new THREE.MeshBasicMaterial({ color: 0x06b6d4 });
 
             const b1 = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35), busMat1);
             const b2 = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35), busMat2);
@@ -295,10 +382,10 @@ function Feature3DPreview({ type }) {
             };
         } else if (type === 'forecast') {
             const nodes = [];
-            const nodeMat = new THREE.MeshStandardMaterial({ color: 0x0ea5e9, emissive: 0x0284c7, emissiveIntensity: 0.8 });
-            
-            for (let i = 0; i < 8; i++) {
-                const node = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), nodeMat);
+            const nodeMat = new THREE.MeshStandardMaterial({ color: 0x06b6d4, emissive: 0x0284c7, emissiveIntensity: 0.8 });
+
+            for (let i = 0; i < 6; i++) {
+                const node = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), nodeMat);
                 node.position.set((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 2);
                 group.add(node);
                 nodes.push(node);
@@ -322,7 +409,7 @@ function Feature3DPreview({ type }) {
                 group.rotation.x += 0.005;
             };
         } else if (type === 'anomaly') {
-            const coneGeo = new THREE.ConeGeometry(2, 2.5, 32, 1, true);
+            const coneGeo = new THREE.ConeGeometry(2, 2.5, 24, 1, true);
             const coneMat = new THREE.MeshBasicMaterial({ color: 0xef4444, wireframe: true, transparent: true, opacity: 0.4 });
             const cone = new THREE.Mesh(coneGeo, coneMat);
             cone.rotation.x = Math.PI / 2;
@@ -345,9 +432,9 @@ function Feature3DPreview({ type }) {
             };
         } else if (type === 'events') {
             const ring1Mat = new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.8 });
-            const ring1 = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.06, 16, 50), ring1Mat);
-            const ring2 = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.04, 16, 50), ring1Mat);
-            const ring3 = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.03, 16, 50), ring1Mat);
+            const ring1 = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.06, 12, 40), ring1Mat);
+            const ring2 = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.04, 12, 40), ring1Mat);
+            const ring3 = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.03, 12, 40), ring1Mat);
 
             group.add(ring1);
             group.add(ring2);
@@ -365,16 +452,32 @@ function Feature3DPreview({ type }) {
             };
         }
 
-        let animationFrameId;
+        let animationFrameId = null;
+        let isVisible = true;
+
         const animate = () => {
+            if (!isVisible) return;
             animationFrameId = requestAnimationFrame(animate);
             animateFunc();
             renderer.render(scene, camera);
         };
+
+        const observer = new IntersectionObserver(([entry]) => {
+            isVisible = entry.isIntersecting;
+            if (isVisible) {
+                if (!animationFrameId) animate();
+            } else if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+        }, { threshold: 0.05 });
+
+        observer.observe(currentMount);
         animate();
 
         return () => {
-            cancelAnimationFrame(animationFrameId);
+            observer.disconnect();
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
             if (currentMount.contains(renderer.domElement)) {
                 currentMount.removeChild(renderer.domElement);
             }
@@ -391,11 +494,309 @@ function Feature3DPreview({ type }) {
                 position: 'relative',
                 borderRadius: '12px',
                 overflow: 'hidden',
-                background: 'rgba(5, 7, 15, 0.6)',
-                border: '1px solid rgba(255, 255, 255, 0.06)',
+                background: 'rgba(5, 7, 15, 0.75)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
                 marginBottom: '16px'
             }}
         />
+    );
+}
+
+// ── Step-by-Step Animated SVG Pipeline Component ────────────────────
+function DynamicPipelineVisualization() {
+    const pipelineSteps = [
+        {
+            num: "01",
+            title: "Data Sources",
+            tag: "RAW STREAM",
+            color: "#06b6d4",
+            desc: "CTA passenger boarding CSV records + NOAA weather telemetry feeds."
+        },
+        {
+            num: "02",
+            title: "Preprocessing",
+            tag: "SCALER & IMPUTE",
+            color: "#10b981",
+            desc: "Feature cleaning, NaN imputation, and MinMaxScaler Z-score normalization."
+        },
+        {
+            num: "03",
+            title: "ML Inference",
+            tag: "PYTORCH & IFOREST",
+            color: "#f59e0b",
+            desc: "PyTorch 2-Layer LSTM demand, Isolation Forest anomaly scanner, XGBoost decay."
+        },
+        {
+            num: "04",
+            title: "FastAPI REST API",
+            tag: "JSON BACKEND",
+            color: "#8b5cf6",
+            desc: "Uvicorn ASGI server serving REST endpoints (/api/demand, /api/buses)."
+        },
+        {
+            num: "05",
+            title: "React 3D Dashboard",
+            tag: "WEBGL FRONTEND",
+            color: "#ef4444",
+            desc: "Interactive Leaflet city maps, Three.js 3D WebGL canvases, and Recharts graphs."
+        }
+    ];
+
+    return (
+        <div style={{ position: 'relative', overflow: 'hidden' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', position: 'relative', zIndex: 2 }}>
+                {pipelineSteps.map((step, idx) => (
+                    <div
+                        key={idx}
+                        className="glass-card"
+                        style={{
+                            padding: '20px',
+                            background: 'rgba(10, 15, 30, 0.75)',
+                            backdropFilter: 'blur(16px)',
+                            borderRadius: '14px',
+                            border: `1px solid ${step.color}35`,
+                            boxShadow: `0 8px 24px rgba(0, 0, 0, 0.4), inset 0 0 15px ${step.color}10`,
+                            position: 'relative'
+                        }}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                            <span style={{ fontSize: '24px', fontWeight: '900', color: step.color, fontFamily: 'var(--font-mono, monospace)' }}>
+                                {step.num}
+                            </span>
+                            <span
+                                className="badge"
+                                style={{
+                                    fontSize: '10px',
+                                    padding: '4px 8px',
+                                    background: `${step.color}20`,
+                                    color: step.color,
+                                    border: `1px solid ${step.color}50`
+                                }}
+                            >
+                                {step.tag}
+                            </span>
+                        </div>
+                        <h4 style={{ color: '#fff', fontSize: '16px', fontWeight: '800', margin: '0 0 6px 0' }}>
+                            {step.title}
+                        </h4>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '12px', margin: 0, lineHeight: '1.5' }}>
+                            {step.desc}
+                        </p>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '14px', fontSize: '11px', color: step.color }}>
+                            <span style={{
+                                width: '8px',
+                                height: '8px',
+                                borderRadius: '50%',
+                                background: step.color,
+                                boxShadow: `0 0 8px ${step.color}`,
+                                display: 'inline-block'
+                            }} />
+                            <span style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: '10px' }}>JSON TELEMETRY STREAMING</span>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            <div style={{ marginTop: '20px', padding: '16px', background: 'rgba(5, 7, 15, 0.6)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--accent-cyan)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        ⚡ Real-Time Async JSON Data Pipeline (FastAPI ➔ React 3D Dashboard)
+                    </span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                        Continuous Streaming Stream Rate: 30 FPS
+                    </span>
+                </div>
+
+                <svg width="100%" height="40" viewBox="0 0 1000 40" preserveAspectRatio="none" style={{ overflow: 'visible' }}>
+                    <path d="M 10 20 L 990 20" stroke="rgba(255, 255, 255, 0.1)" strokeWidth="3" fill="none" />
+                    <path
+                        d="M 10 20 L 990 20"
+                        stroke="#06b6d4"
+                        strokeWidth="3"
+                        fill="none"
+                        className="animated-dash-line"
+                    />
+                    <circle r="5" fill="#06b6d4" filter="drop-shadow(0 0 6px #06b6d4)">
+                        <animateMotion path="M 10 20 L 990 20" dur="3s" repeatCount="indefinite" />
+                    </circle>
+                    <circle r="5" fill="#10b981" filter="drop-shadow(0 0 6px #10b981)">
+                        <animateMotion path="M 10 20 L 990 20" dur="3s" begin="1s" repeatCount="indefinite" />
+                    </circle>
+                    <circle r="5" fill="#f59e0b" filter="drop-shadow(0 0 6px #f59e0b)">
+                        <animateMotion path="M 10 20 L 990 20" dur="3s" begin="2s" repeatCount="indefinite" />
+                    </circle>
+                </svg>
+            </div>
+        </div>
+    );
+}
+
+// ── SECTION 1: "How to Use the Platform (System Instructions)" ────────
+function SystemInstructionsProcessFlow() {
+    const shouldReduceMotion = useReducedMotion();
+
+    const steps = [
+        {
+            num: 1,
+            title: "Open Live Map",
+            icon: "🗺️",
+            color: "#06b6d4",
+            desc: "Navigate to Live Map to view simulated buses moving across Chicago coordinates with occupancy badges."
+        },
+        {
+            num: 2,
+            title: "Inspect Bus Telemetry",
+            icon: "🚌",
+            color: "#06b6d4",
+            desc: "Click any bus marker to view route name, current speed (km/h), occupancy (%), and zone location."
+        },
+        {
+            num: 3,
+            title: "Run Demand Forecast",
+            icon: "📊",
+            color: "#f59e0b",
+            desc: "Go to Demand, adjust hour/weather parameters or click preset scenarios (Rain/Peak), then click Predict."
+        },
+        {
+            num: 4,
+            title: "Scan Anomalies",
+            icon: "🚨",
+            color: "#ef4444",
+            desc: "Go to Anomalies and click Trigger Stream Scan to evaluate stream data against the Isolation Forest model."
+        },
+        {
+            num: 5,
+            title: "Simulate Events",
+            icon: "🎯",
+            color: "#8b5cf6",
+            desc: "Go to Events, select event category (Concert/Match), adjust distance slider, and compute ridership multiplier."
+        },
+        {
+            num: 6,
+            title: "Execute Fleet Reroute",
+            icon: "🔀",
+            color: "#10b981",
+            desc: "Review automated dispatcher recommendations on Live Map and click \"Execute Reroute\" to rebalance capacity."
+        }
+    ];
+
+    return (
+        <div className="glass-card" style={{ padding: '40px 28px', borderRadius: '24px', position: 'relative' }}>
+            <div style={{ marginBottom: '36px', textAlign: 'center' }}>
+                <h2 style={{ fontSize: '26px', fontWeight: '800', color: '#fff', margin: '0 0 6px 0', letterSpacing: '-0.3px' }}>
+                    📖 How to Use the Platform (System Instructions)
+                </h2>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
+                    Cinema-style numbered process flow with glowing center spine & interactive hover mechanics.
+                </p>
+            </div>
+
+            <div style={{ position: 'relative', maxWidth: '960px', margin: '0 auto' }}>
+                <div
+                    className="center-spine-glowing"
+                    style={{
+                        position: 'absolute',
+                        left: '50%',
+                        top: '20px',
+                        bottom: '20px',
+                        width: '4px',
+                        transform: 'translateX(-50%)',
+                        background: '#06b6d4',
+                        borderRadius: '4px',
+                        zIndex: 1
+                    }}
+                />
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '36px', position: 'relative', zIndex: 2 }}>
+                    {steps.map((step, idx) => {
+                        const isLeft = idx % 2 === 0;
+                        const xOffset = isLeft ? -60 : 60;
+
+                        return (
+                            <motion.div
+                                key={step.num}
+                                className="process-step-row"
+                                initial={shouldReduceMotion ? { opacity: 1, x: 0 } : { opacity: 0, x: xOffset }}
+                                whileInView={{ opacity: 1, x: 0 }}
+                                viewport={{ amount: 0.2, once: true }}
+                                transition={{ duration: 0.6, delay: idx * 0.1, ease: [0.16, 1, 0.3, 1] }}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justify: isLeft ? 'flex-start' : 'flex-end',
+                                    position: 'relative',
+                                    width: '100%'
+                                }}
+                            >
+                                <div
+                                    className="step-card-hover-wrapper process-step-card"
+                                    style={{
+                                        width: 'calc(50% - 40px)',
+                                        background: 'rgba(10, 15, 30, 0.82)',
+                                        backdropFilter: 'blur(16px)',
+                                        borderRadius: '16px',
+                                        padding: '1.5rem',
+                                        border: `1px solid ${step.color}45`,
+                                        boxShadow: `0 10px 30px rgba(0, 0, 0, 0.5), inset 0 0 15px ${step.color}10`,
+                                        position: 'relative'
+                                    }}
+                                >
+                                    <div
+                                        style={{
+                                            position: 'absolute',
+                                            top: '50%',
+                                            [isLeft ? 'right' : 'left']: '-40px',
+                                            width: '40px',
+                                            height: '0px',
+                                            borderTop: `2px dashed ${step.color}aa`,
+                                            transform: 'translateY(-50%)'
+                                        }}
+                                    />
+
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                                        <span className="step-icon-spin" style={{ fontSize: '24px' }}>
+                                            {step.icon}
+                                        </span>
+                                        <h4 style={{ color: '#fff', fontSize: '17px', fontWeight: '800', margin: 0 }}>
+                                            {step.title}
+                                        </h4>
+                                    </div>
+                                    <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: 0, lineHeight: '1.55' }}>
+                                        {step.desc}
+                                    </p>
+                                </div>
+
+                                <div
+                                    className="process-step-node"
+                                    style={{
+                                        position: 'absolute',
+                                        left: '50%',
+                                        transform: 'translateX(-50%)',
+                                        width: '40px',
+                                        height: '40px',
+                                        borderRadius: '50%',
+                                        background: step.color,
+                                        boxShadow: `0 0 18px ${step.color}, 0 0 35px ${step.color}80`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justify: 'center',
+                                        color: '#030712',
+                                        fontWeight: '900',
+                                        fontSize: '16px',
+                                        fontFamily: 'var(--font-mono, monospace)',
+                                        zIndex: 3,
+                                        border: '3px solid #030712'
+                                    }}
+                                >
+                                    {step.num}
+                                </div>
+                            </motion.div>
+                        );
+                    })}
+                </div>
+            </div>
+        </div>
     );
 }
 
@@ -405,7 +806,8 @@ function Home() {
     const [cityStatus, setCityStatus] = useState(null);
     const [loading, setLoading]       = useState(true);
     const [vizMode, setVizMode]       = useState('globe');
-    const [activeGuideTab, setActiveGuideTab] = useState(0);
+
+    const cardRectsRef = useRef(new Map());
 
     useEffect(() => {
         const fetchStatus = async () => {
@@ -420,89 +822,42 @@ function Home() {
         fetchStatus();
     }, []);
 
+    const handleCardMouseEnter = (e) => {
+        const card = e.currentTarget;
+        cardRectsRef.current.set(card, card.getBoundingClientRect());
+    };
+
     const handleCardMouseMove = (e) => {
         const card = e.currentTarget;
-        const rect = card.getBoundingClientRect();
+        let rect = cardRectsRef.current.get(card);
+        if (!rect) {
+            rect = card.getBoundingClientRect();
+            cardRectsRef.current.set(card, rect);
+        }
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         const centerX = rect.width / 2;
         const centerY = rect.height / 2;
-        const rotateX = ((y - centerY) / centerY) * -6;
-        const rotateY = ((x - centerX) / centerX) * 6;
+        const rotateX = ((y - centerY) / centerY) * -10;
+        const rotateY = ((x - centerX) / centerX) * 10;
 
-        card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.01, 1.01, 1.01)`;
-        card.style.boxShadow = `0 15px 35px rgba(14, 165, 233, 0.25)`;
+        card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.02, 1.02, 1.02)`;
+        card.style.boxShadow = `0 20px 45px rgba(6, 182, 212, 0.28), 0 0 25px rgba(6, 182, 212, 0.15)`;
+        card.style.borderColor = 'rgba(6, 182, 212, 0.45)';
     };
 
     const handleCardMouseLeave = (e) => {
         const card = e.currentTarget;
+        cardRectsRef.current.delete(card);
         card.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)';
         card.style.boxShadow = 'none';
+        card.style.borderColor = '';
     };
-
-    const guideSteps = [
-        {
-            id: 'map',
-            title: '1. Live City Map',
-            icon: '🗺️',
-            badge: 'SIMULATED TELEMETRY MODE',
-            route: '/map',
-            description: 'Track 20 active buses moving across Chicago coordinates in real time with live occupancy status badges and demand circles.',
-            details: [
-                { label: 'Green Badge (<40%)', desc: 'Sufficient seating capacity available for passengers.', color: 'var(--accent-green)' },
-                { label: 'Yellow Badge (40-80%)', desc: 'Moderate passenger capacity utilization.', color: 'var(--accent-orange)' },
-                { label: 'Red Badge (>80%)', desc: 'High occupancy alert — triggers automated rerouting recommendation.', color: 'var(--accent-red)' },
-                { label: 'Red Heatmap Circles', desc: 'High-density passenger boarding zones (>60 pax/hr).', color: 'var(--accent-cyan)' }
-            ]
-        },
-        {
-            id: 'forecast',
-            title: '2. Demand Forecast',
-            icon: '📊',
-            badge: 'PYTORCH 2-LAYER LSTM',
-            route: '/demand',
-            description: 'Query the PyTorch LSTM neural network model to forecast future hourly ridership with NOAA weather sensitivity.',
-            details: [
-                { label: 'Temporal Features', desc: 'Hour of day (0-23), weekend flag, and month parameters.', color: 'var(--accent-cyan)' },
-                { label: 'NOAA Weather Inputs', desc: 'Temperature range, precipitation (mm), and rainfall flag.', color: 'var(--accent-green)' },
-                { label: 'Normalized Z-Scores', desc: 'Computes crowd density relative to baseline averages.', color: 'var(--accent-orange)' },
-                { label: 'Visual Distribution', desc: 'Renders bar chart comparison using Recharts library.', color: 'var(--accent-purple)' }
-            ]
-        },
-        {
-            id: 'anomaly',
-            title: '3. Anomaly Scanner',
-            icon: '🚨',
-            badge: 'ISOLATION FOREST (100 TREES)',
-            route: '/anomaly',
-            description: 'Scan stream data for unexpected passenger spikes (e.g., 85 pax at 2 AM) using an Isolation Forest ensemble.',
-            details: [
-                { label: 'Automated Stream Scan', desc: 'Scans test scenarios every 30 seconds automatically.', color: 'var(--accent-cyan)' },
-                { label: 'Contamination Threshold', desc: 'Trained at 5% contamination rate for high sensitivity.', color: 'var(--accent-red)' },
-                { label: 'Severity Ratings', desc: 'Assigns NORMAL, MEDIUM, or HIGH surge ratings.', color: 'var(--accent-orange)' },
-                { label: 'Decision Score', desc: 'Calculates exact tree isolation path depth scores.', color: 'var(--accent-green)' }
-            ]
-        },
-        {
-            id: 'events',
-            title: '4. Event Impact',
-            icon: '🎯',
-            badge: 'XGBOOST DISTANCE-DECAY',
-            route: '/events',
-            description: 'Simulate public events (Concerts, Sports Matches, Festivals) to pre-position fleet capacity hours in advance.',
-            details: [
-                { label: 'Event Classification', desc: 'Supports Concert, Match, Festival, Protest, Holiday types.', color: 'var(--accent-cyan)' },
-                { label: 'Distance Attenuation', desc: 'Applies decay multiplier formula beyond 5 km radius.', color: 'var(--accent-green)' },
-                { label: 'Demand Multiplier', desc: 'Predicts multipliers up to 12.56x normal ridership.', color: 'var(--accent-red)' },
-                { label: 'Fleet Preparation', desc: 'Pre-routes empty buses before venue crowds disperse.', color: 'var(--accent-orange)' }
-            ]
-        }
-    ];
 
     return (
         <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '36px' }}>
-            
-            {/* 1. HERO SECTION */}
+
+            {/* 1. 3D HERO SECTION WITH PARTICLE SYSTEM & CAMERA PANNING */}
             <div
                 className="glass-card result-card-glow"
                 style={{
@@ -511,27 +866,28 @@ function Home() {
                     gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
                     gap: '28px',
                     alignItems: 'center',
-                    background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.14) 0%, rgba(15, 23, 42, 0.9) 60%, rgba(16, 185, 129, 0.1) 100%)',
-                    border: '1px solid rgba(14, 165, 233, 0.35)',
-                    boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5), 0 0 35px rgba(14, 165, 233, 0.2)'
+                    background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, rgba(10, 15, 30, 0.92) 60%, rgba(16, 185, 129, 0.12) 100%)',
+                    border: '1px solid rgba(6, 182, 212, 0.4)',
+                    boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6), 0 0 40px rgba(6, 182, 212, 0.25)',
+                    borderRadius: '24px'
                 }}
             >
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                         <span className="badge badge-green" style={{ fontSize: '12px', padding: '6px 14px' }}>
-                            🟢 SYSTEM ONLINE (DEMO MODE)
+                            🟢 FASTAPI BACKEND ONLINE
                         </span>
                         <span className="badge badge-cyan" style={{ fontSize: '12px', padding: '6px 14px' }}>
-                            ✨ 3D WEBGL ENGINE
+                            ✨ THREE.JS 3D PARTICLE ENGINE
                         </span>
                     </div>
 
-                    <h1 style={{ fontSize: '38px', fontWeight: '900', margin: 0, color: '#fff', lineHeight: '1.15', letterSpacing: '-0.5px' }}>
-                        Smart Bus Transit Management System
+                    <h1 style={{ fontSize: '40px', fontWeight: '900', margin: 0, color: '#fff', lineHeight: '1.15', letterSpacing: '-0.5px' }}>
+                        Smart Bus Transit Demand Orchestration System
                     </h1>
 
                     <p style={{ color: 'var(--text-secondary)', fontSize: '15px', margin: 0, lineHeight: '1.65' }}>
-                        An intelligent transit platform for real-time bus monitoring, passenger-demand forecasting, anomaly surge detection, and operational fleet planning.
+                        An intelligent real-time transit platform for telemetry monitoring, PyTorch passenger demand forecasting, Isolation Forest surge anomaly detection, and event fleet rebalancing.
                         Trained on Chicago CTA boarding records & NOAA weather telemetry.
                     </p>
 
@@ -539,14 +895,14 @@ function Home() {
                         <button
                             className={vizMode === 'globe' ? 'btn-primary' : 'btn-secondary'}
                             onClick={() => setVizMode('globe')}
-                            style={{ padding: '8px 16px', fontSize: '13px' }}
+                            style={{ padding: '8px 18px', fontSize: '13px', fontWeight: '600' }}
                         >
-                            🌐 3D Globe View
+                            🌐 3D Transit Particles Globe
                         </button>
                         <button
                             className={vizMode === 'grid' ? 'btn-primary' : 'btn-secondary'}
                             onClick={() => setVizMode('grid')}
-                            style={{ padding: '8px 16px', fontSize: '13px' }}
+                            style={{ padding: '8px 18px', fontSize: '13px', fontWeight: '600' }}
                         >
                             🏙️ 3D City Demand Grid
                         </button>
@@ -561,217 +917,244 @@ function Home() {
                         </button>
                         <a href="#how-it-works" style={{ textDecoration: 'none' }}>
                             <button className="btn-secondary" style={{ padding: '12px 20px', fontSize: '14px', fontWeight: '600' }}>
-                                ⚙️ How It Works ↓
+                                ⚙️ Data Pipeline ↓
                             </button>
                         </a>
                     </div>
                 </div>
 
-                <div style={{ height: '360px', width: '100%', position: 'relative' }}>
+                <div style={{ height: '380px', width: '100%', position: 'relative' }}>
                     <Transit3DCanvas mode={vizMode} />
-                    <div style={{
-                        position: 'absolute',
-                        bottom: '12px',
-                        right: '16px',
-                        fontSize: '11px',
-                        color: 'var(--accent-cyan)',
-                        background: 'rgba(15, 23, 42, 0.85)',
-                        padding: '5px 12px',
-                        borderRadius: '20px',
-                        border: '1px solid rgba(14, 165, 233, 0.3)'
-                    }}>
-                        🖱️ Drag mouse to tilt 3D camera
-                    </div>
                 </div>
             </div>
 
-            {/* 2. REAL-TIME TRANSIT OVERVIEW (SIMULATION DATA) */}
-            <div className="glass-card" style={{ padding: '24px' }}>
+            {/* 2. REAL-TIME TELEMETRY & ALERTS BANNER WITH DIGITAL ODOMETER */}
+            <div
+                className="glass-card"
+                style={{
+                    padding: '24px',
+                    background: 'rgba(10, 15, 30, 0.8)',
+                    backdropFilter: 'blur(16px)',
+                    border: '1px solid rgba(6, 182, 212, 0.25)',
+                    borderRadius: '20px'
+                }}
+            >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
                     <div>
                         <h3 style={{ color: 'var(--accent-cyan)', fontSize: '14px', fontWeight: '800', textTransform: 'uppercase', margin: 0, letterSpacing: '0.5px' }}>
-                            ⚡ Real-Time Transit Overview
+                            ⚡ Live Telemetry & Network Alerts
                         </h3>
                         <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                            Generated via FastAPI backend endpoints (`/api/buses`)
+                            Real-time streaming stats via FastAPI REST API (`/api/buses`)
                         </span>
                     </div>
-                    <span className="badge badge-orange" style={{ padding: '6px 14px', fontSize: '11px' }}>
-                        DEMO DATA / SIMULATION MODE
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span className="badge badge-green" style={{ padding: '6px 14px', fontSize: '11px' }}>
+                            🟢 LIVE MONITORING ACTIVE
+                        </span>
+                    </div>
                 </div>
 
-                <div className="stats-container">
+                <div className="stats-container" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
                     <div
-                        className="stat-item"
+                        className="stat-item glass-module-card"
+                        onMouseEnter={handleCardMouseEnter}
                         onMouseMove={handleCardMouseMove}
                         onMouseLeave={handleCardMouseLeave}
-                        style={{ transition: 'transform 0.15s ease, box-shadow 0.15s ease', cursor: 'pointer' }}
+                        style={{ padding: '18px', background: 'rgba(255,255,255,0.03)', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}
                     >
-                        <span className="stat-lbl">🚌 Active Buses (Simulated)</span>
-                        <span className="stat-val" style={{ color: 'var(--accent-cyan)' }}>
-                            {loading ? '...' : cityStatus?.total_buses || 20} Vehicles
+                        <span className="stat-lbl" style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                            🚌 Active Buses (Telemetry)
+                        </span>
+                        <span className="stat-val" style={{ fontSize: '26px', color: 'var(--accent-cyan)', fontWeight: '800' }}>
+                            {loading ? '...' : <OdometerNumber targetValue={cityStatus?.total_buses || 20} suffix=" Vehicles" />}
                         </span>
                     </div>
 
                     <div
-                        className="stat-item"
+                        className="stat-item glass-module-card"
+                        onMouseEnter={handleCardMouseEnter}
                         onMouseMove={handleCardMouseMove}
                         onMouseLeave={handleCardMouseLeave}
-                        style={{ transition: 'transform 0.15s ease, box-shadow 0.15s ease', cursor: 'pointer' }}
+                        style={{ padding: '18px', background: 'rgba(255,255,255,0.03)', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}
                     >
-                        <span className="stat-lbl">📊 Average Fleet Occupancy</span>
-                        <span className="stat-val" style={{ color: 'var(--accent-green)' }}>
-                            {loading ? '...' : `${cityStatus?.avg_occupancy || 50}%`}
+                        <span className="stat-lbl" style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                            📊 Average Fleet Occupancy
+                        </span>
+                        <span className="stat-val" style={{ fontSize: '26px', color: 'var(--accent-green)', fontWeight: '800' }}>
+                            {loading ? '...' : <OdometerNumber targetValue={cityStatus?.avg_occupancy || 50} suffix="%" />}
                         </span>
                     </div>
 
                     <div
-                        className="stat-item"
+                        className="stat-item glass-module-card"
+                        onMouseEnter={handleCardMouseEnter}
                         onMouseMove={handleCardMouseMove}
                         onMouseLeave={handleCardMouseLeave}
-                        style={{ transition: 'transform 0.15s ease, box-shadow 0.15s ease', cursor: 'pointer' }}
+                        style={{ padding: '18px', background: 'rgba(255,255,255,0.03)', borderRadius: '14px', border: '1px solid rgba(239,68,68,0.25)' }}
                     >
-                        <span className="stat-lbl">🕒 Peak Status</span>
-                        <span className="stat-val" style={{ color: 'var(--accent-orange)' }}>
-                            {loading ? '...' : cityStatus?.peak_status || 'Normal Operations'}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                            <span className="stat-lbl" style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                🕒 System Peak Status
+                            </span>
+                            <span className="badge badge-red pulse-badge-warning" style={{ fontSize: '10px', padding: '3px 8px', fontWeight: '700' }}>
+                                ⚡ MORNING PEAK
+                            </span>
+                        </div>
+                        <span className="stat-val" style={{ fontSize: '20px', color: 'var(--accent-orange)', fontWeight: '800', display: 'block', marginTop: '4px' }}>
+                            {loading ? '...' : cityStatus?.peak_status || 'Morning Peak Hour — High Demand'}
                         </span>
                     </div>
 
                     <div
-                        className="stat-item"
+                        className="stat-item glass-module-card"
+                        onMouseEnter={handleCardMouseEnter}
                         onMouseMove={handleCardMouseMove}
                         onMouseLeave={handleCardMouseLeave}
-                        style={{ transition: 'transform 0.15s ease, box-shadow 0.15s ease', cursor: 'pointer' }}
+                        style={{ padding: '18px', background: 'rgba(255,255,255,0.03)', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}
                     >
-                        <span className="stat-lbl">🔥 Current Network Demand</span>
-                        <span className="stat-val" style={{ color: 'var(--accent-red)' }}>
-                            {loading ? '...' : cityStatus?.demand_level || 'MODERATE'}
+                        <span className="stat-lbl" style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                            🔥 Current Network Demand Level
+                        </span>
+                        <span className="stat-val" style={{ fontSize: '24px', color: 'var(--accent-red)', fontWeight: '800' }}>
+                            {loading ? '...' : cityStatus?.demand_level || 'HIGH SURGE'}
                         </span>
                     </div>
                 </div>
             </div>
 
-            {/* 3. MAIN MODULES */}
+            {/* 3. UPGRADED SYSTEM MODULE CARDS (GLASSMORPHISM + 3D HOVER TILT + SPRING SCALE) */}
             <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
                     <div>
-                        <h3 style={{ color: '#fff', fontSize: '20px', fontWeight: '800', margin: 0 }}>
-                            🚀 Implemented System Modules
+                        <h3 style={{ color: '#fff', fontSize: '22px', fontWeight: '800', margin: 0 }}>
+                            🚀 System Functional Modules
                         </h3>
                         <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: 0, marginTop: '4px' }}>
-                            Interactive WebGL 3D previews for each active functional module
+                            Dark glassmorphism cards with 3D cursor tilt physics and 1.05x WebGL mini-previews on hover
                         </p>
                     </div>
-                    <span className="badge badge-purple" style={{ fontSize: '12px' }}>
-                        4 FUNCTIONAL PIPELINES
+                    <span className="badge badge-purple" style={{ fontSize: '12px', padding: '6px 14px' }}>
+                        4 CORE ML PIPELINES
                     </span>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '24px' }}>
-                    
-                    {/* Module 1: Live Map */}
+
                     <div
-                        className="glass-card"
+                        className="glass-card glass-module-card"
+                        onMouseEnter={handleCardMouseEnter}
                         onMouseMove={handleCardMouseMove}
                         onMouseLeave={handleCardMouseLeave}
                         style={{
                             padding: '24px',
                             cursor: 'pointer',
-                            transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-                            background: 'linear-gradient(145deg, rgba(15, 23, 42, 0.8) 0%, rgba(14, 165, 233, 0.08) 100%)',
-                            border: '1px solid rgba(14, 165, 233, 0.25)'
+                            background: 'linear-gradient(145deg, rgba(10, 15, 30, 0.85) 0%, rgba(6, 182, 212, 0.08) 100%)',
+                            border: '1px solid rgba(6, 182, 212, 0.3)',
+                            borderRadius: '20px',
+                            backdropFilter: 'blur(16px)'
                         }}
                         onClick={() => navigate('/map')}
                     >
-                        <Feature3DPreview type="map" />
+                        <div className="inner-preview-container">
+                            <Feature3DPreview type="map" />
+                        </div>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                             <h4 style={{ color: '#fff', fontSize: '18px', margin: 0, fontWeight: '800' }}>Live Transit Map</h4>
-                            <span className="badge badge-green" style={{ fontSize: '10px' }}>SIMULATION MODE</span>
+                            <span className="badge badge-green" style={{ fontSize: '10px' }}>TELEMETRY</span>
                         </div>
                         <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: 0, marginBottom: '18px', lineHeight: '1.5' }}>
-                            View 20 simulated buses moving across Chicago coordinates, inspect occupancy status badges, and dispatch rerouting actions.
+                            Track 20 simulated buses moving across Chicago coordinates, inspect occupancy status badges, and dispatch automated rerouting actions.
                         </p>
                         <button className="btn-primary" style={{ padding: '10px 16px', fontSize: '13px', width: '100%', fontWeight: '700' }}>
                             Open Live Map →
                         </button>
                     </div>
 
-                    {/* Module 2: Demand Forecast */}
                     <div
-                        className="glass-card"
+                        className="glass-card glass-module-card"
+                        onMouseEnter={handleCardMouseEnter}
                         onMouseMove={handleCardMouseMove}
                         onMouseLeave={handleCardMouseLeave}
                         style={{
                             padding: '24px',
                             cursor: 'pointer',
-                            transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-                            background: 'linear-gradient(145deg, rgba(15, 23, 42, 0.8) 0%, rgba(16, 185, 129, 0.08) 100%)',
-                            border: '1px solid rgba(16, 185, 129, 0.25)'
+                            background: 'linear-gradient(145deg, rgba(10, 15, 30, 0.85) 0%, rgba(16, 185, 129, 0.08) 100%)',
+                            border: '1px solid rgba(16, 185, 129, 0.3)',
+                            borderRadius: '20px',
+                            backdropFilter: 'blur(16px)'
                         }}
                         onClick={() => navigate('/demand')}
                     >
-                        <Feature3DPreview type="forecast" />
+                        <div className="inner-preview-container">
+                            <Feature3DPreview type="forecast" />
+                        </div>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                             <h4 style={{ color: '#fff', fontSize: '18px', margin: 0, fontWeight: '800' }}>Demand Forecast</h4>
                             <span className="badge badge-cyan" style={{ fontSize: '10px' }}>PYTORCH LSTM</span>
                         </div>
                         <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: 0, marginBottom: '18px', lineHeight: '1.5' }}>
-                            Query the 2-layer PyTorch LSTM model to predict future passenger crowds based on temperature, rainfall, and hour of day.
+                            Query the 2-layer PyTorch LSTM neural model to forecast future hourly ridership with NOAA weather sensitivity parameters.
                         </p>
                         <button className="btn-primary" style={{ padding: '10px 16px', fontSize: '13px', width: '100%', fontWeight: '700' }}>
                             Launch Forecast →
                         </button>
                     </div>
 
-                    {/* Module 3: Anomaly Scanner */}
                     <div
-                        className="glass-card"
+                        className="glass-card glass-module-card"
+                        onMouseEnter={handleCardMouseEnter}
                         onMouseMove={handleCardMouseMove}
                         onMouseLeave={handleCardMouseLeave}
                         style={{
                             padding: '24px',
                             cursor: 'pointer',
-                            transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-                            background: 'linear-gradient(145deg, rgba(15, 23, 42, 0.8) 0%, rgba(239, 68, 68, 0.08) 100%)',
-                            border: '1px solid rgba(239, 68, 68, 0.25)'
+                            background: 'linear-gradient(145deg, rgba(10, 15, 30, 0.85) 0%, rgba(239, 68, 68, 0.08) 100%)',
+                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                            borderRadius: '20px',
+                            backdropFilter: 'blur(16px)'
                         }}
                         onClick={() => navigate('/anomaly')}
                     >
-                        <Feature3DPreview type="anomaly" />
+                        <div className="inner-preview-container">
+                            <Feature3DPreview type="anomaly" />
+                        </div>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                             <h4 style={{ color: '#fff', fontSize: '18px', margin: 0, fontWeight: '800' }}>Anomaly Scanner</h4>
                             <span className="badge badge-red" style={{ fontSize: '10px' }}>ISOLATION FOREST</span>
                         </div>
                         <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: 0, marginBottom: '18px', lineHeight: '1.5' }}>
-                            Scan stream data with an Isolation Forest ensemble (100 trees) to flag unexpected crowd surges and off-peak spikes.
+                            Scan stream data with an Isolation Forest ensemble (100 trees) to flag unexpected passenger spikes and off-peak crowd surges.
                         </p>
                         <button className="btn-primary" style={{ padding: '10px 16px', fontSize: '13px', width: '100%', fontWeight: '700' }}>
                             Launch Scanner →
                         </button>
                     </div>
 
-                    {/* Module 4: Event Impact */}
                     <div
-                        className="glass-card"
+                        className="glass-card glass-module-card"
+                        onMouseEnter={handleCardMouseEnter}
                         onMouseMove={handleCardMouseMove}
                         onMouseLeave={handleCardMouseLeave}
                         style={{
                             padding: '24px',
                             cursor: 'pointer',
-                            transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-                            background: 'linear-gradient(145deg, rgba(15, 23, 42, 0.8) 0%, rgba(245, 158, 11, 0.08) 100%)',
-                            border: '1px solid rgba(245, 158, 11, 0.25)'
+                            background: 'linear-gradient(145deg, rgba(10, 15, 30, 0.85) 0%, rgba(245, 158, 11, 0.08) 100%)',
+                            border: '1px solid rgba(245, 158, 11, 0.3)',
+                            borderRadius: '20px',
+                            backdropFilter: 'blur(16px)'
                         }}
                         onClick={() => navigate('/events')}
                     >
-                        <Feature3DPreview type="events" />
+                        <div className="inner-preview-container">
+                            <Feature3DPreview type="events" />
+                        </div>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                             <h4 style={{ color: '#fff', fontSize: '18px', margin: 0, fontWeight: '800' }}>Event Impact</h4>
                             <span className="badge badge-orange" style={{ fontSize: '10px' }}>XGBOOST DECAY</span>
                         </div>
                         <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: 0, marginBottom: '18px', lineHeight: '1.5' }}>
-                            Simulate venue scale & spatial distance decay to calculate ridership multipliers for proactive fleet preparation.
+                            Simulate venue scale & spatial distance decay to calculate ridership multipliers for proactive fleet pre-positioning.
                         </p>
                         <button className="btn-primary" style={{ padding: '10px 16px', fontSize: '13px', width: '100%', fontWeight: '700' }}>
                             Launch Simulator →
@@ -781,382 +1164,22 @@ function Home() {
                 </div>
             </div>
 
-            {/* 4. HOW TO USE THE PLATFORM */}
-            <div
-                className="glass-card"
-                style={{
-                    padding: '32px',
-                    border: '1px solid rgba(14, 165, 233, 0.3)',
-                    background: 'linear-gradient(135deg, rgba(11, 15, 25, 0.95) 0%, rgba(15, 23, 42, 0.9) 100%)'
-                }}
-            >
+            {/* 4. DYNAMIC SYSTEM DATA PIPELINE VISUALIZATION */}
+            <div id="how-it-works" className="glass-card" style={{ padding: '32px', borderRadius: '24px' }}>
                 <div style={{ marginBottom: '24px' }}>
                     <h2 style={{ fontSize: '22px', fontWeight: '800', color: '#fff', margin: 0, marginBottom: '4px' }}>
-                        📖 How to Use the Platform (User Manual)
+                        ⚙️ System Data Pipeline & Data Streaming
                     </h2>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
-                        Step-by-step instructions to test and evaluate all features of the system.
+                        Step-by-step architecture with continuous glowing dots simulating real-time JSON data streaming from FastAPI backend to the 3D Dashboard.
                     </p>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-                    <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--glass-border)', padding: '16px', borderRadius: '12px' }}>
-                        <span className="badge badge-cyan" style={{ fontSize: '11px', marginBottom: '8px', display: 'inline-block' }}>STEP 1</span>
-                        <h4 style={{ color: '#fff', fontSize: '15px', margin: '0 0 6px 0' }}>Open Live Map</h4>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '12px', margin: 0, lineHeight: '1.5' }}>
-                            Navigate to <strong>Live Map</strong> to view simulated buses moving across Chicago coordinates with occupancy badges.
-                        </p>
-                    </div>
-
-                    <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--glass-border)', padding: '16px', borderRadius: '12px' }}>
-                        <span className="badge badge-cyan" style={{ fontSize: '11px', marginBottom: '8px', display: 'inline-block' }}>STEP 2</span>
-                        <h4 style={{ color: '#fff', fontSize: '15px', margin: '0 0 6px 0' }}>Inspect Bus Telemetry</h4>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '12px', margin: 0, lineHeight: '1.5' }}>
-                            Click any bus marker to view route name, current speed (km/h), occupancy (%), and zone location.
-                        </p>
-                    </div>
-
-                    <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--glass-border)', padding: '16px', borderRadius: '12px' }}>
-                        <span className="badge badge-green" style={{ fontSize: '11px', marginBottom: '8px', display: 'inline-block' }}>STEP 3</span>
-                        <h4 style={{ color: '#fff', fontSize: '15px', margin: '0 0 6px 0' }}>Run Demand Forecast</h4>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '12px', margin: 0, lineHeight: '1.5' }}>
-                            Go to <strong>Demand</strong>, adjust hour/weather parameters or click preset scenarios (Rain/Peak), then click Predict.
-                        </p>
-                    </div>
-
-                    <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--glass-border)', padding: '16px', borderRadius: '12px' }}>
-                        <span className="badge badge-red" style={{ fontSize: '11px', marginBottom: '8px', display: 'inline-block' }}>STEP 4</span>
-                        <h4 style={{ color: '#fff', fontSize: '15px', margin: '0 0 6px 0' }}>Scan Anomalies</h4>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '12px', margin: 0, lineHeight: '1.5' }}>
-                            Go to <strong>Anomalies</strong> and click Trigger Stream Scan to evaluate stream data against the Isolation Forest model.
-                        </p>
-                    </div>
-
-                    <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--glass-border)', padding: '16px', borderRadius: '12px' }}>
-                        <span className="badge badge-orange" style={{ fontSize: '11px', marginBottom: '8px', display: 'inline-block' }}>STEP 5</span>
-                        <h4 style={{ color: '#fff', fontSize: '15px', margin: '0 0 6px 0' }}>Simulate Events</h4>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '12px', margin: 0, lineHeight: '1.5' }}>
-                            Go to <strong>Events</strong>, select event category (Concert/Match), adjust distance slider, and compute ridership multiplier.
-                        </p>
-                    </div>
-
-                    <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--glass-border)', padding: '16px', borderRadius: '12px' }}>
-                        <span className="badge badge-purple" style={{ fontSize: '11px', marginBottom: '8px', display: 'inline-block' }}>STEP 6</span>
-                        <h4 style={{ color: '#fff', fontSize: '15px', margin: '0 0 6px 0' }}>Execute Fleet Reroute</h4>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '12px', margin: 0, lineHeight: '1.5' }}>
-                            Review automated dispatcher recommendations on Live Map and click "Execute Reroute" to rebalance capacity.
-                        </p>
-                    </div>
-                </div>
+                <DynamicPipelineVisualization />
             </div>
 
-            {/* 5. HOW THE PROJECT WORKS (SYSTEM PIPELINE) */}
-            <div id="how-it-works" className="glass-card" style={{ padding: '32px' }}>
-                <div style={{ marginBottom: '24px' }}>
-                    <h2 style={{ fontSize: '22px', fontWeight: '800', color: '#fff', margin: 0, marginBottom: '4px' }}>
-                        ⚙️ How the Project Works (System Pipeline)
-                    </h2>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
-                        End-to-end architecture showing how raw datasets flow into trained ML models, REST endpoints, and the Web UI.
-                    </p>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
-                        <div style={{ padding: '16px', background: 'rgba(14, 165, 233, 0.1)', border: '1px solid rgba(14, 165, 233, 0.3)', borderRadius: '10px' }}>
-                            <strong style={{ color: 'var(--accent-cyan)', fontSize: '13px', display: 'block', marginBottom: '4px' }}>1. DATA SOURCES</strong>
-                            <p style={{ color: 'var(--text-secondary)', fontSize: '12px', margin: 0 }}>CTA passenger boarding records + NOAA weather (temp, rainfall, WMO codes).</p>
-                        </div>
-
-                        <div style={{ padding: '16px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '10px' }}>
-                            <strong style={{ color: 'var(--accent-green)', fontSize: '13px', display: 'block', marginBottom: '4px' }}>2. PREPROCESSING</strong>
-                            <p style={{ color: 'var(--text-secondary)', fontSize: '12px', margin: 0 }}>Cleaning, NaN imputation, feature engineering, and MinMaxScaler normalization.</p>
-                        </div>
-
-                        <div style={{ padding: '16px', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '10px' }}>
-                            <strong style={{ color: 'var(--accent-orange)', fontSize: '13px', display: 'block', marginBottom: '4px' }}>3. ML INFERENCE</strong>
-                            <p style={{ color: 'var(--text-secondary)', fontSize: '12px', margin: 0 }}>PyTorch LSTM (Demand), Isolation Forest (Anomalies), XGBoost (Events).</p>
-                        </div>
-
-                        <div style={{ padding: '16px', background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '10px' }}>
-                            <strong style={{ color: 'var(--accent-purple)', fontSize: '13px', display: 'block', marginBottom: '4px' }}>4. FASTAPI REST BACKEND</strong>
-                            <p style={{ color: 'var(--text-secondary)', fontSize: '12px', margin: 0 }}>Exposes JSON endpoints (`/api/demand`, `/api/anomaly`, `/api/events`, `/api/buses`).</p>
-                        </div>
-
-                        <div style={{ padding: '16px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '10px' }}>
-                            <strong style={{ color: 'var(--accent-red)', fontSize: '13px', display: 'block', marginBottom: '4px' }}>5. REACT 3D DASHBOARD</strong>
-                            <p style={{ color: 'var(--text-secondary)', fontSize: '12px', margin: 0 }}>Interactive Leaflet city map, Three.js WebGL 3D canvases, and Recharts graphs.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* 6. TECHNOLOGY STACK */}
-            <div className="glass-card" style={{ padding: '32px' }}>
-                <div style={{ marginBottom: '24px' }}>
-                    <h2 style={{ fontSize: '22px', fontWeight: '800', color: '#fff', margin: 0, marginBottom: '4px' }}>
-                        💻 Verified Technology Stack
-                    </h2>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
-                        Technologies actually used in this repository (verified via source code & package dependencies).
-                    </p>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
-                    <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--glass-border)', padding: '16px', borderRadius: '10px' }}>
-                        <strong style={{ color: 'var(--accent-cyan)', fontSize: '14px', display: 'block', marginBottom: '8px' }}>Frontend</strong>
-                        <ul style={{ color: 'var(--text-secondary)', fontSize: '13px', paddingLeft: '16px', margin: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <li>React 19 & Vite 8</li>
-                            <li>React Router DOM 7</li>
-                            <li>Leaflet & React-Leaflet</li>
-                            <li>Three.js (WebGL 3D)</li>
-                            <li>Recharts</li>
-                            <li>Axios HTTP Client</li>
-                        </ul>
-                    </div>
-
-                    <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--glass-border)', padding: '16px', borderRadius: '10px' }}>
-                        <strong style={{ color: 'var(--accent-green)', fontSize: '14px', display: 'block', marginBottom: '8px' }}>Backend API</strong>
-                        <ul style={{ color: 'var(--text-secondary)', fontSize: '13px', paddingLeft: '16px', margin: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <li>Python 3.10+</li>
-                            <li>FastAPI Framework</li>
-                            <li>Uvicorn ASGI Server</li>
-                            <li>Pydantic Data Schemas</li>
-                            <li>NumPy & Pandas</li>
-                        </ul>
-                    </div>
-
-                    <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--glass-border)', padding: '16px', borderRadius: '10px' }}>
-                        <strong style={{ color: 'var(--accent-orange)', fontSize: '14px', display: 'block', marginBottom: '8px' }}>Machine Learning</strong>
-                        <ul style={{ color: 'var(--text-secondary)', fontSize: '13px', paddingLeft: '16px', margin: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <li>PyTorch (LSTM Model)</li>
-                            <li>Scikit-Learn (Isolation Forest)</li>
-                            <li>XGBoost (Event Multiplier)</li>
-                            <li>MinMaxScaler (Feature Scaling)</li>
-                        </ul>
-                    </div>
-
-                    <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--glass-border)', padding: '16px', borderRadius: '10px' }}>
-                        <strong style={{ color: 'var(--accent-purple)', fontSize: '14px', display: 'block', marginBottom: '8px' }}>Data & Assets</strong>
-                        <ul style={{ color: 'var(--text-secondary)', fontSize: '13px', paddingLeft: '16px', margin: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <li>CTA Hourly Boarding CSV</li>
-                            <li>NOAA Weather Telemetry</li>
-                            <li>OpenStreetMap Tiles</li>
-                            <li>Simulated Telemetry Generator</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-
-            {/* 7. DATA FLOW */}
-            <div className="glass-card" style={{ padding: '32px' }}>
-                <div style={{ marginBottom: '20px' }}>
-                    <h2 style={{ fontSize: '22px', fontWeight: '800', color: '#fff', margin: 0, marginBottom: '4px' }}>
-                        🔄 System Data Flow
-                    </h2>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
-                        How user inputs and telemetry data move through the system to generate outputs.
-                    </p>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                    <div style={{ padding: '12px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', borderLeft: '4px solid var(--accent-cyan)' }}>
-                        <strong style={{ color: '#fff' }}>Step 1 — Input Collection:</strong> User selects zone, time, and weather parameters on the frontend OR backend generates simulated bus coordinates.
-                    </div>
-                    <div style={{ padding: '12px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', borderLeft: '4px solid var(--accent-green)' }}>
-                        <strong style={{ color: '#fff' }}>Step 2 — Feature Normalization:</strong> FastAPI receives JSON payloads and transforms raw inputs using fitted `MinMaxScaler` scalers matching training data distributions.
-                    </div>
-                    <div style={{ padding: '12px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', borderLeft: '4px solid var(--accent-orange)' }}>
-                        <strong style={{ color: '#fff' }}>Step 3 — Model Inference:</strong> PyTorch (LSTM sequence inference), Isolation Forest (decision path tree depth scoring), or XGBoost (event multiplier calculation with distance decay).
-                    </div>
-                    <div style={{ padding: '12px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', borderLeft: '4px solid var(--accent-purple)' }}>
-                        <strong style={{ color: '#fff' }}>Step 4 — UI Rendering:</strong> FastAPI returns JSON responses. React updates Leaflet map markers, Three.js 3D WebGL canvases, and Recharts historical bar distributions.
-                    </div>
-                </div>
-            </div>
-
-            {/* 8. 3D VISUALIZATION EXPLANATION */}
-            <div className="glass-card" style={{ padding: '32px' }}>
-                <div style={{ marginBottom: '20px' }}>
-                    <h2 style={{ fontSize: '22px', fontWeight: '800', color: '#fff', margin: 0, marginBottom: '4px' }}>
-                        🌐 3D WebGL Visualization Purpose & Controls
-                    </h2>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
-                        Why 3D graphics are used and how visitors can interact with them.
-                    </p>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
-                    <div>
-                        <h4 style={{ color: 'var(--accent-cyan)', fontSize: '15px', margin: '0 0 10px 0' }}>Why 3D Visualization?</h4>
-                        <ul style={{ color: 'var(--text-secondary)', fontSize: '13px', paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <li>Spatially represents transit route networks and orbital fleet motion.</li>
-                            <li>Visualizes passenger demand density as 3D height towers across city zones.</li>
-                            <li>Provides an intuitive, engaging representation of ML neural graphs and radar scanners.</li>
-                        </ul>
-                    </div>
-
-                    <div>
-                        <h4 style={{ color: 'var(--accent-green)', fontSize: '15px', margin: '0 0 10px 0' }}>How to Interact:</h4>
-                        <ul style={{ color: 'var(--text-secondary)', fontSize: '13px', paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <li><strong>Hero 3D Canvas:</strong> Drag your mouse over the canvas to tilt and rotate the 3D camera.</li>
-                            <li><strong>View Toggle:</strong> Click "3D Globe View" or "3D City Demand Grid" to switch 3D rendering modes.</li>
-                            <li><strong>Leaflet Map:</strong> Drag to pan, scroll to zoom, and click bus markers for telemetry tooltips.</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-
-            {/* 9. AI/ML BEHIND THE PLATFORM */}
-            <div className="glass-card" style={{ padding: '32px' }}>
-                <div style={{ marginBottom: '24px' }}>
-                    <h2 style={{ fontSize: '22px', fontWeight: '800', color: '#fff', margin: 0, marginBottom: '4px' }}>
-                        🤖 AI Behind the Platform (Implemented Models)
-                    </h2>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
-                        Detailed breakdown of all 3 machine learning models trained and deployed in the system.
-                    </p>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
-                    {/* Model 1 */}
-                    <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(14, 165, 233, 0.3)', padding: '20px', borderRadius: '12px' }}>
-                        <span className="badge badge-cyan" style={{ fontSize: '10px', marginBottom: '8px', display: 'inline-block' }}>PYTORCH NEURAL NET</span>
-                        <h3 style={{ color: '#fff', fontSize: '17px', margin: '0 0 8px 0' }}>1. PyTorch LSTM Demand Model</h3>
-                        <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <div><strong>Purpose:</strong> Predicts hourly passenger boarding demand Z-scores.</div>
-                            <div><strong>Input Features (9):</strong> Hour, weekend flag, max temp, min temp, precipitation, is_raining, weather code, day of week, month.</div>
-                            <div><strong>Architecture:</strong> 2-Layer LSTM (64 hidden dim, dropout 0.2) + Linear FC layers.</div>
-                            <div><strong>Output:</strong> Normalized Z-score value (e.g. `0.80` dry vs `2.79` heavy rain).</div>
-                            <div><strong>Where Displayed:</strong> `/demand` page (Forecast output & bar chart).</div>
-                        </div>
-                    </div>
-
-                    {/* Model 2 */}
-                    <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '20px', borderRadius: '12px' }}>
-                        <span className="badge badge-red" style={{ fontSize: '10px', marginBottom: '8px', display: 'inline-block' }}>ENSEMBLE CLASSIFIER</span>
-                        <h3 style={{ color: '#fff', fontSize: '17px', margin: '0 0 8px 0' }}>2. Isolation Forest Anomaly Scanner</h3>
-                        <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <div><strong>Purpose:</strong> Scans ridership telemetry for unexpected off-peak crowd surges.</div>
-                            <div><strong>Input Features (3):</strong> Hour, ridership demand, weekend flag.</div>
-                            <div><strong>Architecture:</strong> Ensemble of 100 Isolation Trees (contamination=0.05).</div>
-                            <div><strong>Output:</strong> Anomaly flag (`-1` surge, `1` normal) + tree path isolation score.</div>
-                            <div><strong>Where Displayed:</strong> `/anomaly` page (Stream alert feed & severity badges).</div>
-                        </div>
-                    </div>
-
-                    {/* Model 3 */}
-                    <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(245, 158, 11, 0.3)', padding: '20px', borderRadius: '12px' }}>
-                        <span className="badge badge-orange" style={{ fontSize: '10px', marginBottom: '8px', display: 'inline-block' }}>GRADIENT BOOSTING</span>
-                        <h3 style={{ color: '#fff', fontSize: '17px', margin: '0 0 8px 0' }}>3. XGBoost Event Impact Model</h3>
-                        <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <div><strong>Purpose:</strong> Simulates public event ridership multipliers with distance decay.</div>
-                            <div><strong>Input Features (5):</strong> Event type, event scale, distance (km), hours to event, day of week.</div>
-                            <div><strong>Architecture:</strong> XGBRegressor + spatial distance decay math (`max(0.1, 1 - (d-5)/45 * 0.75)`).</div>
-                            <div><strong>Output:</strong> Multiplier factor (e.g. `12.56x` for nearby festival vs `1.18x` for 50km away).</div>
-                            <div><strong>Where Displayed:</strong> `/events` page (Multiplier circle & impact level).</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* 10. PROJECT ARCHITECTURE DIAGRAM */}
-            <div className="glass-card" style={{ padding: '32px' }}>
-                <div style={{ marginBottom: '20px' }}>
-                    <h2 style={{ fontSize: '22px', fontWeight: '800', color: '#fff', margin: 0, marginBottom: '4px' }}>
-                        🏗️ Structural Project Architecture
-                    </h2>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
-                        High-level component breakdown of repository files and layers.
-                    </p>
-                </div>
-
-                <div style={{ background: 'rgba(5, 7, 15, 0.8)', border: '1px solid var(--glass-border)', padding: '20px', borderRadius: '12px', fontFamily: 'monospace', fontSize: '12.5px', color: 'var(--accent-cyan)', overflowX: 'auto', lineHeight: '1.6' }}>
-                    <div>┌────────────────────────────────────────────────────────────────────────┐</div>
-                    <div>│                        REACT 19 FRONTEND DASHBOARD (port 5173)         │</div>
-                    <div>│   Home | Live Map (Leaflet) | Demand | Anomalies | Events | Three.js  │</div>
-                    <div>└───────────────────────────────────┬────────────────────────────────────┘</div>
-                    <div>                                    │ Axios HTTP REST</div>
-                    <div>                                    ▼</div>
-                    <div>┌────────────────────────────────────────────────────────────────────────┐</div>
-                    <div>│                        FASTAPI PYTHON BACKEND (port 8080)              │</div>
-                    <div>│   Routes: /api/demand  |  /api/anomaly  |  /api/events  |  /api/buses  │</div>
-                    <div>└───────────────────────────────────┬────────────────────────────────────┘</div>
-                    <div>                                    │ PyTorch / Scikit-Learn / XGBoost</div>
-                    <div>                                    ▼</div>
-                    <div>┌────────────────────────────────────────────────────────────────────────┐</div>
-                    <div>│                        TRAINED MODEL ARTIFACTS (`models/saved/`)      │</div>
-                    <div>│   demand_model_best.pth  |  anomaly_model.pkl  |  event_model.pkl    │</div>
-                    <div>└───────────────────────────────────┬────────────────────────────────────┘</div>
-                    <div>                                    │ Loaded Pandas Data & Scalers</div>
-                    <div>                                    ▼</div>
-                    <div>┌────────────────────────────────────────────────────────────────────────┐</div>
-                    <div>│                        DATASET (`data/processed/`)                      │</div>
-                    <div>│   Chicago CTA Hourly Boardings + NOAA Weather Telemetry Records        │</div>
-                    <div>└────────────────────────────────────────────────────────────────────────┘</div>
-                </div>
-            </div>
-
-            {/* 11. ABOUT THE PROJECT */}
-            <div className="glass-card" style={{ padding: '32px' }}>
-                <div style={{ marginBottom: '20px' }}>
-                    <h2 style={{ fontSize: '22px', fontWeight: '800', color: '#fff', margin: 0, marginBottom: '4px' }}>
-                        ℹ️ About the Project
-                    </h2>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
-                        Problem context, proposed solution, and real-world impact.
-                    </p>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
-                    <div>
-                        <strong style={{ color: '#fff', fontSize: '14px', display: 'block', marginBottom: '4px' }}>The Problem:</strong>
-                        Public transit authorities struggle with unexpected crowd surges during bad weather or major sports/concert events, leading to bus overcrowding, increased wait times, and inefficient empty bus runs.
-                    </div>
-
-                    <div>
-                        <strong style={{ color: '#fff', fontSize: '14px', display: 'block', marginBottom: '4px' }}>The Solution:</strong>
-                        An AI-driven orchestration system combining weather-aware neural networks, Isolation Forest surge detectors, and event distance decay models to give dispatchers actionable fleet rebalancing recommendations.
-                    </div>
-
-                    <div>
-                        <strong style={{ color: '#fff', fontSize: '14px', display: 'block', marginBottom: '4px' }}>Real-World Usefulness:</strong>
-                        Reduces passenger wait times, optimizes bus route allocations, eliminates 20–30% of empty bus runs, and aligns with UN Sustainable Development Goals (SDG 11 & SDG 13).
-                    </div>
-                </div>
-            </div>
-
-            {/* 12. USER VS OPERATOR INFORMATION */}
-            <div className="glass-card" style={{ padding: '32px' }}>
-                <div style={{ marginBottom: '20px' }}>
-                    <h2 style={{ fontSize: '22px', fontWeight: '800', color: '#fff', margin: 0, marginBottom: '4px' }}>
-                        👥 User vs Operator Features
-                    </h2>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
-                        Clear distinction between public passenger views and internal operator tools.
-                    </p>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
-                    <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '20px', borderRadius: '12px' }}>
-                        <span className="badge badge-green" style={{ fontSize: '11px', marginBottom: '8px', display: 'inline-block' }}>COMMUTER / PASSENGER FEATURES</span>
-                        <ul style={{ color: 'var(--text-secondary)', fontSize: '13px', paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <li><strong>Live Bus Tracking:</strong> View active buses and seat availability indicators.</li>
-                            <li><strong>Demand Forecast:</strong> Check expected crowd levels before commuting.</li>
-                            <li><strong>Route Map:</strong> View zone ridership density and bus locations.</li>
-                        </ul>
-                    </div>
-
-                    <div style={{ background: 'rgba(14, 165, 233, 0.08)', border: '1px solid rgba(14, 165, 233, 0.25)', padding: '20px', borderRadius: '12px' }}>
-                        <span className="badge badge-cyan" style={{ fontSize: '11px', marginBottom: '8px', display: 'inline-block' }}>TRANSIT OPERATOR / DISPATCHER FEATURES</span>
-                        <ul style={{ color: 'var(--text-secondary)', fontSize: '13px', paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <li><strong>Automated Rebalancing Console:</strong> One-click fleet rerouting recommendations.</li>
-                            <li><strong>Anomaly Stream Scanner:</strong> Real-time Isolation Forest surge alerts.</li>
-                            <li><strong>Event Impact Simulator:</strong> Proactive fleet pre-positioning prior to major events.</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
+            {/* 5. SYSTEM INSTRUCTIONS PROCESS FLOW */}
+            <SystemInstructionsProcessFlow />
 
         </div>
     );

@@ -2,6 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import pickle
 import numpy as np
+import sys
+import numpy.core.numeric
+sys.modules['numpy._core.numeric'] = numpy.core.numeric
 from sklearn.preprocessing import MinMaxScaler
 from models.loader import (load_demand_model,
                            load_anomaly_model,
