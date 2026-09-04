@@ -189,7 +189,7 @@ function DemandForecast() {
             <div className="page-title-section">
                 <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-                        <h2 className="page-title" style={{ margin: 0 }}>📊 PyTorch LSTM Demand Forecaster</h2>
+                        <h2 className="page-title" style={{ margin: 0 }}>📊 Demand Forecaster</h2>
                         <span className="badge badge-cyan" style={{ fontSize: '11px' }}>2-LAYER RECURRENT NEURAL NET</span>
                     </div>
                     <p className="page-subtitle">Multi-feature temporal ridership forecasting with NOAA weather sensitivity</p>

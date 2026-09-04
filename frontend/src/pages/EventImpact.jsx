@@ -171,7 +171,7 @@ function EventImpact() {
             <div className="page-title-section">
                 <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-                        <h2 className="page-title" style={{ margin: 0 }}>🎯 XGBoost Event Multiplier Predictor</h2>
+                        <h2 className="page-title" style={{ margin: 0 }}>🎯 Event Multiplier Predictor</h2>
                         <span className="badge badge-orange" style={{ fontSize: '11px' }}>SPATIAL DISTANCE DECAY MODEL</span>
                     </div>
                     <p className="page-subtitle">Simulate event scale & spatial proximity to pre-position fleet capacity hours in advance</p>
